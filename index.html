@@ -4,14 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Фото в круглом окне</title>
- 
+
+<!-- HEIC/HEIF -> JPEG/PNG (в браузере). Нужен интернет для загрузки скрипта. -->
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
 <style>
   :root {
     --gap: 14px;
     --radius-ui: 12px;
-    --control-min: 44px;
+    --control-min: 44px; /* минимальный размер для пальцев */
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -84,11 +85,13 @@
   }
   .primary:disabled { opacity: .5; cursor: not-allowed; }
 
+  /* Адаптивный холст: вписываемся в экран, сохраняем квадрат */
   .board {
     margin: 0 auto;
     border: 1px solid #e3e6eb;
     border-radius: 12px;
     background: #fff;
+    /* Размер квадрата: 92% меньшей стороны вьюпорта, но в разумных пределах */
     width: min(92vw, 92vh);
     height: min(92vw, 92vh);
     max-width: 720px; max-height: 720px;
@@ -100,7 +103,8 @@
     display: block;
     width: 100%;
     height: 100%;
-    touch-action: none;
+    /* Очень важно для жестов на мобильных */
+    touch-action: none; /* отключаем скролл/зум страницы, обрабатываем сами */
     border-radius: 10px;
     background: #fff;
   }
@@ -129,7 +133,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Фото в круглом окне — мобильная версия</h1>
+  <h1>Фото в круглом окне</h1>
 
   <div class="panel">
     <div class="row">
@@ -210,6 +214,7 @@
 
 <script>
 (() => {
+  // ========= Константы и элементы =========
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -233,21 +238,23 @@
   const resetBtn = document.getElementById('resetBtn');
 
   // ========= Состояние =========
-  let viewSize = 0;
-  let dpr = 1;
+  let viewSize = 0;        // CSS-пиксели стороны квадрата (адаптивно)
+  let dpr = 1;             // devicePixelRatio
   let img = new Image();
   let imgLoaded = false;
 
   let scale = 1, minScale = 0.5, maxScale = 4;
-  let imgX = 0, imgY = 0;
+  let imgX = 0, imgY = 0;  // позиция левого-верхнего угла (в координатах канвы)
   let fillColor = '#ffffff';
   let strokeColor = '#000000';
   let strokeWidth = 2;
   let drawStrokeInExport = true;
 
+  // Круг
   let radius = parseInt(radiusRange.value, 10);
 
-  const pointers = new Map();
+  // Для жестов
+  const pointers = new Map(); // id -> {x,y}
   let isDragging = false;
   let dragOffsetX = 0, dragOffsetY = 0;
   let pinchStartDist = 0, pinchStartScale = 1, pinchCenter = {x:0,y:0};
@@ -269,28 +276,30 @@
     viewSize = newCssSize;
     dpr = Math.max(1, Math.min(3, Math.round(window.devicePixelRatio || 1)));
 
-
+    // Устанавливаем реальный размер холста под DPR
     canvas.width  = Math.floor(viewSize * dpr);
     canvas.height = Math.floor(viewSize * dpr);
 
-
+    // Трансформ контекста для удобства: рисуем в CSS‑координатах
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-
+    // Максимальный радиус зависит от размера
     const maxR = Math.floor(viewSize / 2) - 2;
     radiusRange.max = String(maxR);
     if (radius > maxR) radius = maxR;
 
-
+    // Масштабируем текущее кадрирование пропорционально размеру канвы
     if (keepFraming && imgLoaded && factor !== 1) {
       imgX *= factor;
       imgY *= factor;
       radius *= factor;
+      // minScale для нового радиуса
       const need = Math.max((2*radius) / img.width, (2*radius) / img.height);
       minScale = Math.max(need, parseFloat(scaleRange.min));
       if (scale < minScale) scale = minScale;
     }
 
+    // Тут же перерисуем
     draw();
   }
 
@@ -582,4 +591,26 @@
 
   centerBtn.addEventListener('click', centerImage);
   fitBtn.addEventListener('click', fitToCircle);
-  reset
+  resetBtn.addEventListener('click', resetAll);
+
+  // Скачивание
+  downloadBtn.addEventListener('click', () => {
+    if (!imgLoaded) return;
+    const fmt = formatSel.value;
+    const url = (fmt === 'jpg')
+      ? renderForDownload('image/jpeg', 0.95)
+      : renderForDownload('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fmt === 'jpg' ? 'photo_circle.jpg' : 'photo_circle.png';
+    a.click();
+    URL.revokeObjectURL?.(url);
+  });
+
+  // Первичная инициализация
+  updateUIState(false);
+  resizeCanvas(false); // вычислить размеры под экран
+})();
+</script>
+</body>
+</html>
