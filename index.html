@@ -2,223 +2,327 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Фото в круглом окне — HEIC, цвета фона и обводки</title>
-
-<!-- Библиотека для конвертации HEIC/HEIF в JPEG/PNG прямо в браузере -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Фото в круглом окне</title>
+ 
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
 <style>
+  :root {
+    --gap: 14px;
+    --radius-ui: 12px;
+    --control-min: 44px;
+  }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    font-family: system-ui, Arial, sans-serif;
-    margin: 0; padding: 24px;
-    background: #f4f4f5; color: #111;
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #f6f7f8; color: #111;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.3;
   }
+
   .wrap {
-    max-width: 820px; margin: 0 auto;
-    background: #fff; border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.08);
-    padding: 18px 18px 24px;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: env(safe-area-inset-top) var(--gap) calc(env(safe-area-inset-bottom) + var(--gap));
   }
-  h1 { margin: 6px 0 14px; font-size: 20px; }
-  .controls { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 12px; }
-  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .row label { display: inline-flex; align-items: center; gap: 8px; }
-  input[type="range"] { width: 220px; }
-  input[type="color"] { width: 40px; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 6px; }
-  button, select, input[type="file"] { font: inherit; }
-  .board {
-    width: 520px; height: 520px; margin: 14px auto;
-    border: 1px solid #ddd; border-radius: 10px;
-    position: relative; overflow: hidden;
+
+  h1 {
+    font-size: 18px;
+    margin: 8px 0 var(--gap);
+    text-align: center;
+  }
+
+  .panel {
+    display: grid;
+    gap: var(--gap);
+    margin-bottom: var(--gap);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap);
+    align-items: center;
+    justify-content: center;
+  }
+
+  .row > * {
+    flex: 0 0 auto;
+  }
+
+  .row .spacer { flex: 1 1 auto; }
+
+  .ctrl {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid #e3e6eb;
+    border-radius: var(--radius-ui);
     background: #fff;
+    min-height: var(--control-min);
   }
+  .ctrl > label { font-size: 14px; color: #333; }
+  .ctrl input[type="range"] {
+    width: 220px;
+    touch-action: none; /* чтобы палец не скроллил страницу при слайде */
+  }
+  .ctrl input[type="color"] {
+    width: 40px; height: 28px; padding: 0;
+    border: 1px solid #ccc; border-radius: 6px;
+  }
+  .ctrl select, .ctrl button, .ctrl input[type="file"] {
+    font: inherit;
+  }
+  .primary {
+    background: #111; color: #fff; border-color: #111;
+    padding: 10px 14px; border-radius: var(--radius-ui); cursor: pointer;
+    min-height: var(--control-min);
+  }
+  .primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  .board {
+    margin: 0 auto;
+    border: 1px solid #e3e6eb;
+    border-radius: 12px;
+    background: #fff;
+    width: min(92vw, 92vh);
+    height: min(92vw, 92vh);
+    max-width: 720px; max-height: 720px;
+    min-width: 280px; min-height: 280px;
+    display: grid; place-items: center;
+  }
+
   canvas {
     display: block;
-    width: 520px; height: 520px; /* 1:1 с реальным размером */
-    cursor: grab;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    border-radius: 10px;
+    background: #fff;
   }
-  canvas:active { cursor: grabbing; }
-  .hint { text-align: center; font-size: 12px; color: #555; margin-top: 6px; }
-  .footer { margin-top: 16px; text-align: center; color: #666; font-size: 12px; }
-  .spacer { flex: 1 1 auto; }
+
+  .hint {
+    text-align: center; color: #666; font-size: 13px; margin-top: 10px;
+  }
+
+  details {
+    margin-top: 6px;
+  }
+  details > summary {
+    cursor: pointer; list-style: none; user-select: none;
+    text-align: center; padding: 8px 10px;
+    color: #111; background: #fff; border: 1px solid #e3e6eb; border-radius: var(--radius-ui);
+  }
+  details[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .adv {
+    border: 1px solid #e3e6eb; border-top: none;
+    border-bottom-left-radius: var(--radius-ui);
+    border-bottom-right-radius: var(--radius-ui);
+    padding: var(--gap);
+    background: #fff;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Фото в круглом окне (фон и обводка на выбор, HEIC поддерживается)</h1>
+  <h1>Фото в круглом окне — мобильная версия</h1>
 
-  <div class="controls">
+  <div class="panel">
     <div class="row">
-      <input type="file" id="file" accept="image/*,.heic,.heif" />
-      <div class="spacer"></div>
-      <label>Формат
+      <div class="ctrl">
+        <label for="file">Файл</label>
+        <input type="file" id="file" accept="image/*,.heic,.heif" />
+      </div>
+
+      <div class="ctrl">
+        <label for="format">Формат</label>
         <select id="format">
           <option value="png">PNG</option>
           <option value="jpg">JPG</option>
         </select>
-      </label>
-      <button id="download" disabled>Скачать</button>
+      </div>
+
+      <button id="download" class="primary" disabled>Скачать</button>
     </div>
 
     <div class="row">
-      <label>Масштаб
+      <div class="ctrl">
+        <label for="scale">Масштаб</label>
         <input type="range" id="scale" min="0.5" max="4" step="0.01" value="1" disabled>
         <span id="scaleVal">1.00×</span>
-      </label>
-      <label>Радиус круга
+      </div>
+
+      <div class="ctrl">
+        <label for="radius">Радиус</label>
         <input type="range" id="radius" min="60" max="240" step="1" value="160" disabled>
         <span id="radiusVal">160 px</span>
-      </label>
-      <button id="centerBtn" disabled>По центру</button>
-      <button id="fitBtn" disabled>Вписать в круг</button>
+      </div>
     </div>
 
-    <div class="row">
-      <label>Цвет фона
-        <input type="color" id="fillColor" value="#ffffff" disabled>
-      </label>
-      <label>Обводка
-        <input type="color" id="strokeColor" value="#000000" disabled>
-      </label>
-      <label>Толщина
-        <input type="range" id="strokeWidth" min="0" max="20" step="1" value="2" disabled>
-        <span id="strokeWidthVal">2 px</span>
-      </label>
-      <label>
-        <input type="checkbox" id="strokeInExport" checked disabled>
-        Рисовать обводку в файле
-      </label>
-    </div>
+    <details>
+      <summary>Ещё настройки</summary>
+      <div class="adv">
+        <div class="row">
+          <div class="ctrl">
+            <label>Цвет фона</label>
+            <input type="color" id="fillColor" value="#ffffff" disabled>
+          </div>
+
+          <div class="ctrl">
+            <label>Обводка</label>
+            <input type="color" id="strokeColor" value="#000000" disabled>
+          </div>
+
+          <div class="ctrl">
+            <label for="strokeWidth">Толщина</label>
+            <input type="range" id="strokeWidth" min="0" max="20" step="1" value="2" disabled>
+            <span id="strokeWidthVal">2 px</span>
+          </div>
+
+          <div class="ctrl">
+            <label for="strokeInExport">В файле</label>
+            <input type="checkbox" id="strokeInExport" checked disabled>
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="centerBtn" class="primary" style="background:#444;border-color:#444" disabled>По центру</button>
+          <button id="fitBtn" class="primary" style="background:#444;border-color:#444" disabled>Вписать в круг</button>
+          <button id="resetBtn" class="primary" style="background:#666;border-color:#666" disabled>Сброс</button>
+        </div>
+      </div>
+    </details>
   </div>
 
   <div class="board">
     <canvas id="c"></canvas>
   </div>
-  <div class="hint">
-    Перетащите фото мышью/пальцем. Колёсико — зум к курсору.<br>
-    Результат — квадрат; внутри круга видна часть фото, фон — выбранный цвет.
-  </div>
 
-  <div class="footer">
-    HEIC конвертируется локально в браузере (нужен интернет для загрузки скрипта).
+  <div class="hint">
+    Перемещайте одним пальцем/мышью. Масштаб — пинч‑зум (2 пальца) или колесо мыши.<br>
+    Результат: квадрат с выбранным фоном; фото видно только внутри круга.
   </div>
 </div>
 
 <script>
 (() => {
-  const SIZE = 520; // квадрат холста
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  canvas.width = SIZE; canvas.height = SIZE;
 
-  // UI элементы
   const fileInput = document.getElementById('file');
   const downloadBtn = document.getElementById('download');
   const formatSel = document.getElementById('format');
+
   const scaleRange = document.getElementById('scale');
   const scaleVal = document.getElementById('scaleVal');
   const radiusRange = document.getElementById('radius');
   const radiusVal = document.getElementById('radiusVal');
-  const centerBtn = document.getElementById('centerBtn');
-  const fitBtn = document.getElementById('fitBtn');
+
   const fillColorInput = document.getElementById('fillColor');
   const strokeColorInput = document.getElementById('strokeColor');
   const strokeWidthRange = document.getElementById('strokeWidth');
   const strokeWidthVal = document.getElementById('strokeWidthVal');
   const strokeInExportCb = document.getElementById('strokeInExport');
 
-  // Состояние
+  const centerBtn = document.getElementById('centerBtn');
+  const fitBtn = document.getElementById('fitBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  // ========= Состояние =========
+  let viewSize = 0;
+  let dpr = 1;
   let img = new Image();
   let imgLoaded = false;
+
   let scale = 1, minScale = 0.5, maxScale = 4;
   let imgX = 0, imgY = 0;
-  let isPointerDown = false, startDX = 0, startDY = 0;
+  let fillColor = '#ffffff';
+  let strokeColor = '#000000';
+  let strokeWidth = 2;
+  let drawStrokeInExport = true;
 
-  const cx = SIZE / 2, cy = SIZE / 2;
   let radius = parseInt(radiusRange.value, 10);
 
-  let fillColor = fillColorInput.value;       // цвет фона
-  let strokeColor = strokeColorInput.value;   // цвет обводки
-  let strokeWidth = parseInt(strokeWidthRange.value, 10);
+  const pointers = new Map();
+  let isDragging = false;
+  let dragOffsetX = 0, dragOffsetY = 0;
+  let pinchStartDist = 0, pinchStartScale = 1, pinchCenter = {x:0,y:0};
+
+  // ========= Адаптивное изменение размера канвы с учётом DPR =========
+  let lastCanvasCss = 0;
+  function measureBoard() {
+    const rect = canvas.getBoundingClientRect();
+    return Math.round(Math.min(rect.width, rect.height));
+  }
+
+  function resizeCanvas(keepFraming = true) {
+    const newCssSize = measureBoard();
+    if (newCssSize <= 0) return;
+
+    const prevCss = viewSize || newCssSize;
+    const factor = newCssSize / prevCss;
+
+    viewSize = newCssSize;
+    dpr = Math.max(1, Math.min(3, Math.round(window.devicePixelRatio || 1)));
+
+
+    canvas.width  = Math.floor(viewSize * dpr);
+    canvas.height = Math.floor(viewSize * dpr);
+
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+
+    const maxR = Math.floor(viewSize / 2) - 2;
+    radiusRange.max = String(maxR);
+    if (radius > maxR) radius = maxR;
+
+
+    if (keepFraming && imgLoaded && factor !== 1) {
+      imgX *= factor;
+      imgY *= factor;
+      radius *= factor;
+      const need = Math.max((2*radius) / img.width, (2*radius) / img.height);
+      minScale = Math.max(need, parseFloat(scaleRange.min));
+      if (scale < minScale) scale = minScale;
+    }
+
+    draw();
+  }
+
+  window.addEventListener('resize', () => {
+    // debounce: перерисуем после конца ресайза
+    clearTimeout(resizeCanvas._t);
+    resizeCanvas._t = setTimeout(() => resizeCanvas(true), 80);
+  });
+
+  // ========= Утилиты =========
+  const cx = () => viewSize/2, cy = () => viewSize/2;
 
   function updateUIState(enabled) {
-    [downloadBtn, scaleRange, radiusRange, centerBtn, fitBtn,
-     fillColorInput, strokeColorInput, strokeWidthRange, strokeInExportCb].forEach(el => {
-      el.disabled = !enabled;
-    });
+    [
+      downloadBtn, scaleRange, radiusRange, fillColorInput, strokeColorInput,
+      strokeWidthRange, strokeInExportCb, centerBtn, fitBtn, resetBtn
+    ].forEach(el => el.disabled = !enabled);
   }
 
-  function draw() {
-    // фон — выбранный цвет
-    ctx.save();
-    ctx.fillStyle = fillColor;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    ctx.restore();
-
+  function setScale(newScale, ax = cx(), ay = cy()) {
     if (!imgLoaded) return;
-
-    // клип по кругу и рисуем фото
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
-    ctx.restore();
-
-    // обводка круга (для предпросмотра рисуем всегда)
-    if (strokeWidth > 0) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.lineWidth = strokeWidth;
-      ctx.strokeStyle = strokeColor;
-      ctx.stroke();
-    }
-  }
-
-  function renderForDownload(mime = 'image/png', quality) {
-    const out = document.createElement('canvas');
-    out.width = SIZE; out.height = SIZE;
-    const octx = out.getContext('2d');
-
-    // фон — выбранный цвет
-    octx.fillStyle = fillColor;
-    octx.fillRect(0, 0, SIZE, SIZE);
-
-    // клип и фото
-    octx.save();
-    octx.beginPath();
-    octx.arc(cx, cy, radius, 0, Math.PI * 2);
-    octx.clip();
-    octx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
-    octx.restore();
-
-    // обводка при экспорте — по желанию
-    if (strokeInExportCb.checked && strokeWidth > 0) {
-      octx.beginPath();
-      octx.arc(cx, cy, radius, 0, Math.PI * 2);
-      octx.lineWidth = strokeWidth;
-      octx.strokeStyle = strokeColor;
-      octx.stroke();
-    }
-
-    return out.toDataURL(mime, quality);
-  }
-
-  function setScale(newScale, anchorX = cx, anchorY = cy) {
     newScale = Math.max(minScale, Math.min(maxScale, newScale));
-    if (!imgLoaded) return;
+    const prev = scale;
+    if (newScale === prev) return;
 
-    const prevScale = scale;
-    if (newScale === prevScale) return;
-
-    const relAX = (anchorX - imgX) / (img.width * prevScale);
-    const relAY = (anchorY - imgY) / (img.height * prevScale);
+    // масштаб вокруг точки якоря (ax, ay)
+    const relAX = (ax - imgX) / (img.width * prev);
+    const relAY = (ay - imgY) / (img.height * prev);
 
     scale = newScale;
-    imgX = anchorX - relAX * (img.width * scale);
-    imgY = anchorY - relAY * (img.height * scale);
+    imgX = ax - relAX * (img.width * scale);
+    imgY = ay - relAY * (img.height * scale);
 
     scaleRange.value = scale.toFixed(2);
     scaleVal.textContent = scale.toFixed(2) + '×';
@@ -227,19 +331,100 @@
 
   function fitToCircle() {
     if (!imgLoaded) return;
-    const need = Math.max((2 * radius) / img.width, (2 * radius) / img.height);
+    const need = Math.max((2*radius) / img.width, (2*radius) / img.height);
     minScale = Math.max(need, parseFloat(scaleRange.min));
     setScale(Math.max(scale, minScale));
   }
 
   function centerImage() {
     if (!imgLoaded) return;
-    imgX = cx - (img.width * scale) / 2;
-    imgY = cy - (img.height * scale) / 2;
+    imgX = cx() - (img.width * scale)/2;
+    imgY = cy() - (img.height * scale)/2;
     draw();
   }
 
-  // Загрузка файла (с поддержкой HEIC/HEIF)
+  function resetAll() {
+    if (!imgLoaded) return;
+    scale = 1;
+    fillColor = '#ffffff';
+    strokeColor = '#000000';
+    strokeWidth = 2;
+    drawStrokeInExport = true;
+
+    fillColorInput.value = fillColor;
+    strokeColorInput.value = strokeColor;
+    strokeWidthRange.value = String(strokeWidth);
+    strokeWidthVal.textContent = strokeWidth + ' px';
+    strokeInExportCb.checked = drawStrokeInExport;
+
+    fitToCircle();
+    centerImage();
+    draw();
+  }
+
+  // ========= Рисование =========
+  function draw() {
+    // фон
+    ctx.save();
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(0, 0, viewSize, viewSize);
+    ctx.restore();
+
+    if (!imgLoaded) return;
+
+    // клип по кругу
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx(), cy(), radius, 0, Math.PI * 2);
+    ctx.clip();
+
+    // фото
+    ctx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
+    ctx.restore();
+
+    // обводка (в предпросмотре всегда рисуем)
+    if (strokeWidth > 0) {
+      ctx.beginPath();
+      ctx.arc(cx(), cy(), radius, 0, Math.PI * 2);
+      ctx.lineWidth = strokeWidth;
+      ctx.strokeStyle = strokeColor;
+      ctx.stroke();
+    }
+  }
+
+  function renderForDownload(mime = 'image/png', quality) {
+    const out = document.createElement('canvas');
+    const _dpr = 1; // экспорт без масштабирования, 1:1 к CSS‑размеру
+    out.width = Math.round(viewSize * _dpr);
+    out.height = Math.round(viewSize * _dpr);
+    const octx = out.getContext('2d');
+    octx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+
+    // фон
+    octx.fillStyle = fillColor;
+    octx.fillRect(0, 0, viewSize, viewSize);
+
+    // клип и фото
+    octx.save();
+    octx.beginPath();
+    octx.arc(cx(), cy(), radius, 0, Math.PI * 2);
+    octx.clip();
+    octx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
+    octx.restore();
+
+    // обводка опционально
+    if (drawStrokeInExport && strokeWidth > 0) {
+      octx.beginPath();
+      octx.arc(cx(), cy(), radius, 0, Math.PI * 2);
+      octx.lineWidth = strokeWidth;
+      octx.strokeStyle = strokeColor;
+      octx.stroke();
+    }
+
+    return out.toDataURL(mime, quality);
+  }
+
+  // ========= Загрузка файла (HEIC/HEIF поддержка) =========
   async function loadFile(file) {
     let blobURL;
     try {
@@ -252,7 +437,6 @@
           alert('Для HEIC нужен интернет для загрузки декодера heic2any.');
           return;
         }
-        // Конвертируем HEIC в JPEG (можно в PNG, но JPEG быстрее и меньше)
         const res = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.98 });
         const outBlob = Array.isArray(res) ? res[0] : res;
         blobURL = URL.createObjectURL(outBlob);
@@ -265,16 +449,27 @@
         URL.revokeObjectURL(blobURL);
         img = newImg; imgLoaded = true;
 
-        // сброс зума/позиции
-        scale = 1; minScale = 0.5; maxScale = parseFloat(scaleRange.max);
+        // Начальные параметры
+        scale = 1; maxScale = parseFloat(scaleRange.max);
 
-        // Минимальный масштаб, чтобы круг был покрыт
-        fitToCircle();
+        // Рассчитать минимальный масштаб под текущий радиус и размер канвы
+        const need = Math.max((2*radius) / img.width, (2*radius) / img.height);
+        minScale = Math.max(need, parseFloat(scaleRange.min));
+
+        // Применить
+        if (scale < minScale) scale = minScale;
         centerImage();
 
+        // UI
         scaleRange.value = scale.toFixed(2);
         scaleVal.textContent = scale.toFixed(2) + '×';
         radiusVal.textContent = radius + ' px';
+
+        fillColorInput.value = fillColor;
+        strokeColorInput.value = strokeColor;
+        strokeWidthRange.value = String(strokeWidth);
+        strokeWidthVal.textContent = strokeWidth + ' px';
+        strokeInExportCb.checked = drawStrokeInExport;
 
         updateUIState(true);
         draw();
@@ -286,35 +481,70 @@
     }
   }
 
-  // === События ===
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) loadFile(file);
-  });
+  // ========= Жесты и события =========
 
-  // Перетаскивание (Pointer Events — мышь/тач)
+  // Перетаскивание одним пальцем / мышью
   canvas.addEventListener('pointerdown', (e) => {
     if (!imgLoaded) return;
-    isPointerDown = true;
     canvas.setPointerCapture(e.pointerId);
-    startDX = e.offsetX - imgX;
-    startDY = e.offsetY - imgY;
-  });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!isPointerDown || !imgLoaded) return;
-    imgX = e.offsetX - startDX;
-    imgY = e.offsetY - startDY;
-    draw();
-  });
-  function endDrag(e){
-    isPointerDown = false;
-    if (e && e.pointerId) { try { canvas.releasePointerCapture(e.pointerId); } catch(_){} }
-  }
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
-  canvas.addEventListener('pointerleave', endDrag);
+    const pt = { x: e.offsetX, y: e.offsetY };
+    pointers.set(e.pointerId, pt);
 
-  // Зум колёсиком к курсору
+    if (pointers.size === 1) {
+      // старт драга
+      isDragging = true;
+      dragOffsetX = pt.x - imgX;
+      dragOffsetY = pt.y - imgY;
+    } else if (pointers.size === 2) {
+      // старт пинча
+      isDragging = false;
+      const [a, b] = [...pointers.values()];
+      pinchStartDist = Math.hypot(b.x - a.x, b.y - a.y);
+      pinchStartScale = scale;
+      pinchCenter = { x: (a.x + b.x)/2, y: (a.y + b.y)/2 };
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!imgLoaded) return;
+    const pt = { x: e.offsetX, y: e.offsetY };
+    if (pointers.has(e.pointerId)) {
+      pointers.set(e.pointerId, pt);
+    }
+
+    if (pointers.size === 1 && isDragging) {
+      imgX = pt.x - dragOffsetX;
+      imgY = pt.y - dragOffsetY;
+      draw();
+    } else if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (pinchStartDist > 0) {
+        const factor = dist / pinchStartDist;
+        setScale(pinchStartScale * factor, pinchCenter.x, pinchCenter.y);
+      }
+    }
+  });
+
+  function endPointer(e) {
+    if (pointers.has(e.pointerId)) pointers.delete(e.pointerId);
+    if (pointers.size <= 0) {
+      isDragging = false;
+    } else if (pointers.size === 1) {
+      // если остался один палец — переходим в режим драга
+      const [p] = [...pointers.values()];
+      isDragging = true;
+      dragOffsetX = p.x - imgX;
+      dragOffsetY = p.y - imgY;
+    }
+    try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+  }
+
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', endPointer);
+
+  // Колесо мыши — зум к курсору
   canvas.addEventListener('wheel', (e) => {
     if (!imgLoaded) return;
     e.preventDefault();
@@ -323,20 +553,23 @@
     setScale(scale * factor, e.offsetX, e.offsetY);
   }, { passive: false });
 
-  // Ползунки/поля
+  // Ползунки/кнопки
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) loadFile(f);
+  });
+
   scaleRange.addEventListener('input', (e) => setScale(parseFloat(e.target.value)));
   radiusRange.addEventListener('input', (e) => {
     radius = parseInt(e.target.value, 10);
     radiusVal.textContent = radius + ' px';
     if (imgLoaded) {
-      const need = Math.max((2 * radius) / img.width, (2 * radius) / img.height);
+      const need = Math.max((2*radius) / img.width, (2*radius) / img.height);
       minScale = Math.max(need, parseFloat(scaleRange.min));
       if (scale < minScale) setScale(minScale);
       draw();
     }
   });
-  centerBtn.addEventListener('click', centerImage);
-  fitBtn.addEventListener('click', fitToCircle);
 
   fillColorInput.addEventListener('input', (e) => { fillColor = e.target.value; draw(); });
   strokeColorInput.addEventListener('input', (e) => { strokeColor = e.target.value; draw(); });
@@ -345,34 +578,8 @@
     strokeWidthVal.textContent = strokeWidth + ' px';
     draw();
   });
+  strokeInExportCb.addEventListener('change', (e) => { drawStrokeInExport = e.target.checked; });
 
-  // Скачивание
-  downloadBtn.addEventListener('click', () => {
-    if (!imgLoaded) return;
-    const fmt = formatSel.value; // png | jpg
-    if (fmt === 'jpg') {
-      const url = renderForDownload('image/jpeg', 0.95);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'photo_circle.jpg';
-      a.click();
-      URL.revokeObjectURL?.(url);
-    } else {
-      const url = renderForDownload('image/png');
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'photo_circle.png';
-      a.click();
-      URL.revokeObjectURL?.(url);
-    }
-  });
-
-  // Изначально — выключенный UI
-  updateUIState(false);
-  scaleVal.textContent = scale.toFixed(2) + '×';
-  radiusVal.textContent = radius + ' px';
-  strokeWidthVal.textContent = strokeWidth + ' px';
-})();
-</script>
-</body>
-</html>
+  centerBtn.addEventListener('click', centerImage);
+  fitBtn.addEventListener('click', fitToCircle);
+  reset
