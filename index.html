@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Фото в круглом окне — HEIC, цвета фона и обводки</title>
+
+<!-- Библиотека для конвертации HEIC/HEIF в JPEG/PNG прямо в браузере -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, Arial, sans-serif;
+    margin: 0; padding: 24px;
+    background: #f4f4f5; color: #111;
+  }
+  .wrap {
+    max-width: 820px; margin: 0 auto;
+    background: #fff; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    padding: 18px 18px 24px;
+  }
+  h1 { margin: 6px 0 14px; font-size: 20px; }
+  .controls { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 12px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .row label { display: inline-flex; align-items: center; gap: 8px; }
+  input[type="range"] { width: 220px; }
+  input[type="color"] { width: 40px; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 6px; }
+  button, select, input[type="file"] { font: inherit; }
+  .board {
+    width: 520px; height: 520px; margin: 14px auto;
+    border: 1px solid #ddd; border-radius: 10px;
+    position: relative; overflow: hidden;
+    background: #fff;
+  }
+  canvas {
+    display: block;
+    width: 520px; height: 520px; /* 1:1 с реальным размером */
+    cursor: grab;
+  }
+  canvas:active { cursor: grabbing; }
+  .hint { text-align: center; font-size: 12px; color: #555; margin-top: 6px; }
+  .footer { margin-top: 16px; text-align: center; color: #666; font-size: 12px; }
+  .spacer { flex: 1 1 auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Фото в круглом окне (фон и обводка на выбор, HEIC поддерживается)</h1>
+
+  <div class="controls">
+    <div class="row">
+      <input type="file" id="file" accept="image/*,.heic,.heif" />
+      <div class="spacer"></div>
+      <label>Формат
+        <select id="format">
+          <option value="png">PNG</option>
+          <option value="jpg">JPG</option>
+        </select>
+      </label>
+      <button id="download" disabled>Скачать</button>
+    </div>
+
+    <div class="row">
+      <label>Масштаб
+        <input type="range" id="scale" min="0.5" max="4" step="0.01" value="1" disabled>
+        <span id="scaleVal">1.00×</span>
+      </label>
+      <label>Радиус круга
+        <input type="range" id="radius" min="60" max="240" step="1" value="160" disabled>
+        <span id="radiusVal">160 px</span>
+      </label>
+      <button id="centerBtn" disabled>По центру</button>
+      <button id="fitBtn" disabled>Вписать в круг</button>
+    </div>
+
+    <div class="row">
+      <label>Цвет фона
+        <input type="color" id="fillColor" value="#ffffff" disabled>
+      </label>
+      <label>Обводка
+        <input type="color" id="strokeColor" value="#000000" disabled>
+      </label>
+      <label>Толщина
+        <input type="range" id="strokeWidth" min="0" max="20" step="1" value="2" disabled>
+        <span id="strokeWidthVal">2 px</span>
+      </label>
+      <label>
+        <input type="checkbox" id="strokeInExport" checked disabled>
+        Рисовать обводку в файле
+      </label>
+    </div>
+  </div>
+
+  <div class="board">
+    <canvas id="c"></canvas>
+  </div>
+  <div class="hint">
+    Перетащите фото мышью/пальцем. Колёсико — зум к курсору.<br>
+    Результат — квадрат; внутри круга видна часть фото, фон — выбранный цвет.
+  </div>
+
+  <div class="footer">
+    HEIC конвертируется локально в браузере (нужен интернет для загрузки скрипта).
+  </div>
+</div>
+
+<script>
+(() => {
+  const SIZE = 520; // квадрат холста
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  canvas.width = SIZE; canvas.height = SIZE;
+
+  // UI элементы
+  const fileInput = document.getElementById('file');
+  const downloadBtn = document.getElementById('download');
+  const formatSel = document.getElementById('format');
+  const scaleRange = document.getElementById('scale');
+  const scaleVal = document.getElementById('scaleVal');
+  const radiusRange = document.getElementById('radius');
+  const radiusVal = document.getElementById('radiusVal');
+  const centerBtn = document.getElementById('centerBtn');
+  const fitBtn = document.getElementById('fitBtn');
+  const fillColorInput = document.getElementById('fillColor');
+  const strokeColorInput = document.getElementById('strokeColor');
+  const strokeWidthRange = document.getElementById('strokeWidth');
+  const strokeWidthVal = document.getElementById('strokeWidthVal');
+  const strokeInExportCb = document.getElementById('strokeInExport');
+
+  // Состояние
+  let img = new Image();
+  let imgLoaded = false;
+  let scale = 1, minScale = 0.5, maxScale = 4;
+  let imgX = 0, imgY = 0;
+  let isPointerDown = false, startDX = 0, startDY = 0;
+
+  const cx = SIZE / 2, cy = SIZE / 2;
+  let radius = parseInt(radiusRange.value, 10);
+
+  let fillColor = fillColorInput.value;       // цвет фона
+  let strokeColor = strokeColorInput.value;   // цвет обводки
+  let strokeWidth = parseInt(strokeWidthRange.value, 10);
+
+  function updateUIState(enabled) {
+    [downloadBtn, scaleRange, radiusRange, centerBtn, fitBtn,
+     fillColorInput, strokeColorInput, strokeWidthRange, strokeInExportCb].forEach(el => {
+      el.disabled = !enabled;
+    });
+  }
+
+  function draw() {
+    // фон — выбранный цвет
+    ctx.save();
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.restore();
+
+    if (!imgLoaded) return;
+
+    // клип по кругу и рисуем фото
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
+    ctx.restore();
+
+    // обводка круга (для предпросмотра рисуем всегда)
+    if (strokeWidth > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.lineWidth = strokeWidth;
+      ctx.strokeStyle = strokeColor;
+      ctx.stroke();
+    }
+  }
+
+  function renderForDownload(mime = 'image/png', quality) {
+    const out = document.createElement('canvas');
+    out.width = SIZE; out.height = SIZE;
+    const octx = out.getContext('2d');
+
+    // фон — выбранный цвет
+    octx.fillStyle = fillColor;
+    octx.fillRect(0, 0, SIZE, SIZE);
+
+    // клип и фото
+    octx.save();
+    octx.beginPath();
+    octx.arc(cx, cy, radius, 0, Math.PI * 2);
+    octx.clip();
+    octx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
+    octx.restore();
+
+    // обводка при экспорте — по желанию
+    if (strokeInExportCb.checked && strokeWidth > 0) {
+      octx.beginPath();
+      octx.arc(cx, cy, radius, 0, Math.PI * 2);
+      octx.lineWidth = strokeWidth;
+      octx.strokeStyle = strokeColor;
+      octx.stroke();
+    }
+
+    return out.toDataURL(mime, quality);
+  }
+
+  function setScale(newScale, anchorX = cx, anchorY = cy) {
+    newScale = Math.max(minScale, Math.min(maxScale, newScale));
+    if (!imgLoaded) return;
+
+    const prevScale = scale;
+    if (newScale === prevScale) return;
+
+    const relAX = (anchorX - imgX) / (img.width * prevScale);
+    const relAY = (anchorY - imgY) / (img.height * prevScale);
+
+    scale = newScale;
+    imgX = anchorX - relAX * (img.width * scale);
+    imgY = anchorY - relAY * (img.height * scale);
+
+    scaleRange.value = scale.toFixed(2);
+    scaleVal.textContent = scale.toFixed(2) + '×';
+    draw();
+  }
+
+  function fitToCircle() {
+    if (!imgLoaded) return;
+    const need = Math.max((2 * radius) / img.width, (2 * radius) / img.height);
+    minScale = Math.max(need, parseFloat(scaleRange.min));
+    setScale(Math.max(scale, minScale));
+  }
+
+  function centerImage() {
+    if (!imgLoaded) return;
+    imgX = cx - (img.width * scale) / 2;
+    imgY = cy - (img.height * scale) / 2;
+    draw();
+  }
+
+  // Загрузка файла (с поддержкой HEIC/HEIF)
+  async function loadFile(file) {
+    let blobURL;
+    try {
+      const type = (file.type || '').toLowerCase();
+      const name = (file.name || '').toLowerCase();
+      const isHeic = type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif');
+
+      if (isHeic) {
+        if (typeof window.heic2any !== 'function') {
+          alert('Для HEIC нужен интернет для загрузки декодера heic2any.');
+          return;
+        }
+        // Конвертируем HEIC в JPEG (можно в PNG, но JPEG быстрее и меньше)
+        const res = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.98 });
+        const outBlob = Array.isArray(res) ? res[0] : res;
+        blobURL = URL.createObjectURL(outBlob);
+      } else {
+        blobURL = URL.createObjectURL(file);
+      }
+
+      const newImg = new Image();
+      newImg.onload = () => {
+        URL.revokeObjectURL(blobURL);
+        img = newImg; imgLoaded = true;
+
+        // сброс зума/позиции
+        scale = 1; minScale = 0.5; maxScale = parseFloat(scaleRange.max);
+
+        // Минимальный масштаб, чтобы круг был покрыт
+        fitToCircle();
+        centerImage();
+
+        scaleRange.value = scale.toFixed(2);
+        scaleVal.textContent = scale.toFixed(2) + '×';
+        radiusVal.textContent = radius + ' px';
+
+        updateUIState(true);
+        draw();
+      };
+      newImg.src = blobURL;
+    } catch (err) {
+      console.error(err);
+      alert('Не удалось обработать файл. Попробуйте другой или конвертируйте в JPG/PNG.');
+    }
+  }
+
+  // === События ===
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) loadFile(file);
+  });
+
+  // Перетаскивание (Pointer Events — мышь/тач)
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!imgLoaded) return;
+    isPointerDown = true;
+    canvas.setPointerCapture(e.pointerId);
+    startDX = e.offsetX - imgX;
+    startDY = e.offsetY - imgY;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isPointerDown || !imgLoaded) return;
+    imgX = e.offsetX - startDX;
+    imgY = e.offsetY - startDY;
+    draw();
+  });
+  function endDrag(e){
+    isPointerDown = false;
+    if (e && e.pointerId) { try { canvas.releasePointerCapture(e.pointerId); } catch(_){} }
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', endDrag);
+
+  // Зум колёсиком к курсору
+  canvas.addEventListener('wheel', (e) => {
+    if (!imgLoaded) return;
+    e.preventDefault();
+    const delta = -e.deltaY;
+    const factor = delta > 0 ? 1.06 : 0.94;
+    setScale(scale * factor, e.offsetX, e.offsetY);
+  }, { passive: false });
+
+  // Ползунки/поля
+  scaleRange.addEventListener('input', (e) => setScale(parseFloat(e.target.value)));
+  radiusRange.addEventListener('input', (e) => {
+    radius = parseInt(e.target.value, 10);
+    radiusVal.textContent = radius + ' px';
+    if (imgLoaded) {
+      const need = Math.max((2 * radius) / img.width, (2 * radius) / img.height);
+      minScale = Math.max(need, parseFloat(scaleRange.min));
+      if (scale < minScale) setScale(minScale);
+      draw();
+    }
+  });
+  centerBtn.addEventListener('click', centerImage);
+  fitBtn.addEventListener('click', fitToCircle);
+
+  fillColorInput.addEventListener('input', (e) => { fillColor = e.target.value; draw(); });
+  strokeColorInput.addEventListener('input', (e) => { strokeColor = e.target.value; draw(); });
+  strokeWidthRange.addEventListener('input', (e) => {
+    strokeWidth = parseInt(e.target.value, 10);
+    strokeWidthVal.textContent = strokeWidth + ' px';
+    draw();
+  });
+
+  // Скачивание
+  downloadBtn.addEventListener('click', () => {
+    if (!imgLoaded) return;
+    const fmt = formatSel.value; // png | jpg
+    if (fmt === 'jpg') {
+      const url = renderForDownload('image/jpeg', 0.95);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'photo_circle.jpg';
+      a.click();
+      URL.revokeObjectURL?.(url);
+    } else {
+      const url = renderForDownload('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'photo_circle.png';
+      a.click();
+      URL.revokeObjectURL?.(url);
+    }
+  });
+
+  // Изначально — выключенный UI
+  updateUIState(false);
+  scaleVal.textContent = scale.toFixed(2) + '×';
+  radiusVal.textContent = radius + ' px';
+  strokeWidthVal.textContent = strokeWidth + ' px';
+})();
+</script>
+</body>
+</html>
